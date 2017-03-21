@@ -123,6 +123,40 @@ const char * fragmentSource = R"(
 	}
 )";
 
+class vec3 {
+
+public:
+    float x, y, z;
+
+    vec3() : x(0), y(0), z(0) {}
+
+    vec3(float x, float y) {
+        this->x = x;
+        this->y = y;
+        this->z = 0;
+    }
+
+    vec3(float x, float y, float z) {
+        this->x = x;
+        this->y = y;
+        this->z = z;
+    }
+
+    vec3 operator*(float n) {
+        return vec3(
+                x * n,
+                y * n,
+                z * n
+        );
+    }
+
+    void operator+=(vec3 const & vec) {
+        this->x += vec.x;
+        this->y += vec.y;
+        this->z += vec.z;
+    }
+};
+
 // row-major matrix 4x4
 struct mat4 {
     float m[4][4];
@@ -294,7 +328,7 @@ public:
 };
 
 class LineStrip {
-    GLuint vao, vbo;        // vertex array object, vertex buffer object
+    GLuint vao;        // vertex array object, vertex buffer object // vbo
     float  vertexData[100]; // interleaved data of coordinates and colors
     int    nVertices;       // number of vertices
 public:
@@ -346,7 +380,46 @@ public:
     }
 };
 
-class
+class BezierCurve {
+    GLuint vao;
+    float vertexData[100];
+    int nVertices;
+
+    std::vector<vec3> cps;	// control points
+
+    float B(int i, float t) {
+        size_t n = cps.size() - 1; // n deg polynomial = n+1 pts!
+
+        float choose = 1;
+
+        for(int j = 1; j <= i; j++) {
+            choose *= (float)(n - j + 1) / j;
+        }
+
+        return (float)(choose * pow(t, i) * pow(1 - t, n - i));
+    }
+
+public:
+    BezierCurve() : nVertices(0) {}
+    
+    void AddControlPoint(vec3 cp) {
+        cps.push_back(cp);
+    }
+
+    vec3 r(float t) {
+        vec3 rr(0, 0);
+
+        for(int i = 0; i < cps.size(); i++) {
+            rr += cps[i] * B(i, t);
+        }
+
+        return rr;
+    }
+
+    void Draw() {
+
+    }
+};
 
 // The virtual world: collection of two objects
 Triangle triangle;
@@ -368,7 +441,7 @@ void onInitialization() {
     }
     glShaderSource(vertexShader, 1, &vertexSource, NULL);
     glCompileShader(vertexShader);
-    checkShader(vertexShader, "Vertex shader error");
+    checkShader(vertexShader, (char *) "Vertex shader error");
 
     // Create fragment shader from string
     unsigned int fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
@@ -378,7 +451,7 @@ void onInitialization() {
     }
     glShaderSource(fragmentShader, 1, &fragmentSource, NULL);
     glCompileShader(fragmentShader);
-    checkShader(fragmentShader, "Fragment shader error");
+    checkShader(fragmentShader, (char *) "Fragment shader error");
 
     // Attach shaders to a single program
     shaderProgram = glCreateProgram();
@@ -465,7 +538,7 @@ int main(int argc, char * argv[]) {
     glutCreateWindow(argv[0]);
 
 #if !defined(__APPLE__)
-    glewExperimental = true;	// magic
+    glewExperimental = GL_TRUE;	// magic : true
     glewInit();
 #endif
 
