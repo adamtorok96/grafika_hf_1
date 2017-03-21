@@ -346,6 +346,8 @@ public:
     }
 };
 
+class
+
 // The virtual world: collection of two objects
 Triangle triangle;
 LineStrip lineStrip;
