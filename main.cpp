@@ -106,7 +106,7 @@ const char * vertexSource = R"(
 
 	void main() {
 		color = vertexColor;														// copy color from input to output
-		gl_Position = vec4(vertexPosition.x, vertexPosition.y, 0, 1) * MVP; 		// transform to clipping space
+		gl_Position = vec4(vertexPosition.x, vertexPosition.y, vertexPosition.z, 1) * MVP; 		// transform to clipping space
 	}
 )";
 
@@ -538,7 +538,7 @@ class BezierSurface {
         float u, v;
     };
 
-    size_t factorial(unsigned int n) {
+    double factorial(unsigned int n) {
         size_t result = 1;
 
         for(unsigned int i = 1; i <= n; i++) {
@@ -548,12 +548,25 @@ class BezierSurface {
         return result;
     }
 
-    size_t binomial(unsigned int n, unsigned int i) {
+    double binomial(unsigned int n, unsigned int i) {
         return factorial(n) / (factorial(i) * factorial(n - i));
     }
 
     double Bernstein(unsigned int n, unsigned int i, float u) {
-        return binomial(n, i) * pow(u, i) * pow(1 - u, n - i);
+        double res = u == 0.0f || u == 1.0f ? 0.0f : binomial(n, i) * pow(u, i) * pow(1.0f - u, n - i);
+        if( u == 0.0f )
+            printf("res: %f u: %f (%lu * %lf * %f)\n", res, u, binomial(n, i), pow(u, i), pow(1.0f - u, n - i));
+
+        return res;
+    }
+
+    double Bi(unsigned int i, double u) {
+        switch(i) {
+            case 0: return pow(1.0f - u, 3);
+            case 1: return 3 * u * pow(1.0f - u, 2);
+            case 2: return 3 * u * u * (1.0f - u);
+            case 3: return u * u *u;
+        }
     }
 
     VertexData p(float u, float v) {
@@ -562,15 +575,20 @@ class BezierSurface {
         unsigned int n = (unsigned int)controlPoints.size();
         unsigned int m = n;
 
+        float sum = 0.0f;
 
         for(unsigned int i = 0; i < n; i++) {
-            for(unsigned int j = 0; j < m; j++) {
+            for(unsigned int j = 0; j < n; j++) {
                 //printf("%d/%d %d/%d %f %f\n", i, n, j, m, u, v);
-                vec += (controlPoints[i][j] * Bernstein(n, i, u) * Bernstein(m, j, v));
+                //vec += (controlPoints[i][j] * Bernstein(n, i, u) * Bernstein(m, j, v));
+                vec += (controlPoints[i][j] * Bi(i, u) * Bi(j, v));
+                sum += Bernstein(n, i, u) * Bernstein(m, j, v);
             }
         }
 
-        /*
+        //printf("sum: %f (%f, %f)\n", sum, u, v);
+
+/*
         for(unsigned int i = 0; i < n; i++) {
             vec3 tmp;
 
@@ -580,8 +598,8 @@ class BezierSurface {
             }
 
             vec += tmp * Bernstein(n, i, u);
-        }
-*/
+        }*/
+
         /*
         vec3 v1, v2;
 
@@ -625,7 +643,7 @@ public:
         glGenBuffers(2, &vbo[0]);
         glBindBuffer(GL_ARRAY_BUFFER, vbo[0]);
 
-        /*
+#if false
         unsigned int N = controlPoints.size();
         nVertices = N * N;
 
@@ -636,24 +654,25 @@ public:
                 *pVtx++ = {controlPoints[i][j], {1, 0, 0}, 1.0f, 1.0f};
             }
         }
-*/
+#else
 
-        unsigned int N = 6; //controlPoints.size();
-        nVertices = N * N * 6;
+        unsigned int N = 20; //controlPoints.size();
+        unsigned int M = N;
+        nVertices = N * M * 6;
 
         VertexData * vtx = new VertexData[nVertices], *pVtx = vtx;
 
-        for (int i = 0; i < N; i++) {
-            for (int j = 0; j < N; j++) {
-                *pVtx++ = p((float)i / N,        (float)j / N);
-                *pVtx++ = p((float)(i + 1) / N,  (float)j / N);
-                *pVtx++ = p((float)i / N,        (float)(j + 1) / N);
-                *pVtx++ = p((float)(i + 1) / N,  (float)j / N);
-                *pVtx++ = p((float)(i + 1) / N,  (float)(j + 1) / N);
-                *pVtx++ = p((float)i / N,        (float)(j + 1) / N);
+        for (float i = 0.0f; i < N; i++) {
+            for (float j = 0.0f; j < M; j++) {
+                *pVtx++ = p(i / N,        j / M);
+                *pVtx++ = p((i + 1) / N,  j / M);
+                *pVtx++ = p(i / N,        (j + 1) / M);
+                *pVtx++ = p((i + 1) / N,  j / M);
+                *pVtx++ = p((i + 1) / N,  (j + 1) / M);
+                *pVtx++ = p(i / N,        (j + 1) / M);
             }
         }
-
+#endif
         glBufferData(GL_ARRAY_BUFFER, nVertices * sizeof(VertexData), vtx, GL_STATIC_DRAW);
 
         glEnableVertexAttribArray(0);  // AttribArray 0 = POSITION
@@ -668,13 +687,13 @@ public:
         float vertexColors[3 * nVertices];
 
         for(auto i = 0; i < nVertices; i++) {
-            vertexColors[i * 3] = 1.0f / (i + 1);
-            vertexColors[i * 3 + 1] = 0 + (1.0f / (i+1));
-            vertexColors[i * 3 + 2] = 1.0f - (1.0f / (i+1));
+            vertexColors[i * 3]     = i % 3 == 0 ? 1.0f : 0.0f; //1.0f / (i + 1);
+            vertexColors[i * 3 + 1] = i % 3 == 1 ? 1.0f : 0.0f; //0 + (1.0f / (i+1));
+            vertexColors[i * 3 + 2] = i % 3 == 2 ? 1.0f : 0.0f; //1.0f - (1.0f / (i+1));
         }
 
         printf("%d %d\n", sizeof(vertexColors), nVertices * 3 * sizeof(float));
-        printf("%d %d %d %d %d\n", factorial(0), factorial(1), factorial(2), factorial(3), factorial(4));
+        printf("%lf %lf %lf %lf %lf\n", factorial(0), factorial(1), factorial(2), factorial(3), factorial(4));
 
         glBindBuffer(GL_ARRAY_BUFFER, vbo[1]); // make it active, it is an array
         glBufferData(GL_ARRAY_BUFFER, sizeof(vertexColors), vertexColors, GL_STATIC_DRAW);	// copy to the GPU
@@ -686,13 +705,17 @@ public:
     void Generate() {
         // 16 control points
         auto n = 4;
-        float delta = 5.0f; //10.0f / n;
+        float delta = 7.5f; //10.0f / n;
 
         for(int i = 0; i < n; i++) {
 
             std::vector<vec3> tmp;
             for(int j = 0; j < n; j++) {
-                tmp.push_back(vec3(-10.0f + i * delta, -10.0f + j * delta, 0));
+                tmp.push_back(vec3(
+                        -10.0f + i * delta,
+                        -10.0f + j * delta,
+                        0.05f)
+                );
             }
 
             controlPoints.push_back(tmp);
@@ -716,7 +739,8 @@ public:
             printf("uniform MVP cannot be set\n");
 
         glBindVertexArray(vao);
-        glDrawArrays(GL_LINES, 0, nVertices); // GL_LINE_STRIP GL_TRIANGLES
+        glDrawArrays(GL_TRIANGLES, 0, nVertices); // GL_LINE_STRIP GL_TRIANGLES
+
     }
 };
 
