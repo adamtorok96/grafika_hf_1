@@ -158,7 +158,7 @@ public:
 
     vec3 operator/(float n) {
         return n == 0.0f
-               ? vec3(*this)
+               ? vec3(x, y, z)
                : vec3(
                 x / n,
                 y / n,
@@ -182,6 +182,14 @@ public:
         );
     }
 
+    vec3 operator*(vec3 const & vec) {
+        return vec3(
+                x * vec.x,
+                y * vec.y,
+                z * vec.z
+        );
+    }
+
     void operator+=(vec3 const & vec) {
         this->x += vec.x;
         this->y += vec.y;
@@ -192,7 +200,7 @@ public:
         return vec3(
             y * vec.z - z * vec.y,
             z * vec.x - x * vec.z,
-            x * vec.z - z * vec.x
+            x * vec.y - y * vec.x
         );
     }
 };
@@ -313,7 +321,12 @@ public:
 
         // vertex coordinates: vbo[0] -> Attrib Array 0 -> vertexPosition of the vertex shader
         glBindBuffer(GL_ARRAY_BUFFER, vbo[0]); // make it active, it is an array
-        static float vertexCoords[] = { -8, -8, -6, 10, 8, -2 };	// vertex data on the CPU
+        static float vertexCoords[] = {
+                -10, -10, // left top
+                -10, 10, // left bottom
+                10, -10 // right bottom
+        };	// vertex data on the CPU
+
         glBufferData(GL_ARRAY_BUFFER,      // copy to the GPU
                      sizeof(vertexCoords), // number of the vbo in bytes
                      vertexCoords,		   // address of the data array on the CPU
@@ -355,7 +368,8 @@ public:
                         0,   0,  0, 0,
                         wTx, wTy,  0, 1); // model matrix
 
-        mat4 MVPTransform = Mscale * Mtranslate * camera.V() * camera.P();
+        //   Mscale * Mtranslate *
+        mat4 MVPTransform = camera.V() * camera.P();
 
         // set GPU uniform matrix variable MVP with the content of CPU variable MVPTransform
         int location = glGetUniformLocation(shaderProgram, "MVP");
@@ -527,7 +541,7 @@ class BezierSurface {
     size_t factorial(unsigned int n) {
         size_t result = 1;
 
-        for(unsigned int i = 1; i < n; i++) {
+        for(unsigned int i = 1; i <= n; i++) {
             result *= i;
         }
 
@@ -548,18 +562,57 @@ class BezierSurface {
         unsigned int n = (unsigned int)controlPoints.size();
         unsigned int m = n;
 
+
         for(unsigned int i = 0; i < n; i++) {
             for(unsigned int j = 0; j < m; j++) {
                 //printf("%d/%d %d/%d %f %f\n", i, n, j, m, u, v);
-                vec += controlPoints[i][j] * Bernstein(n, i, u) * Bernstein(m, j, v);
+                vec += (controlPoints[i][j] * Bernstein(n, i, u) * Bernstein(m, j, v));
             }
         }
 
-        vec4 wVertex = vec4(vec.x, vec.y, vec.z, 1) * camera.Pinv() * camera.Vinv();
-        vec3 pos = vec; //vec3(wVertex.v[0], wVertex.v[1]);
+        /*
+        for(unsigned int i = 0; i < n; i++) {
+            vec3 tmp;
 
+            for(unsigned int j = 0; j < m; j++) {
+                //printf("%d/%d %d/%d %f %f\n", i, n, j, m, u, v);
+                tmp += (controlPoints[i][j] * Bernstein(m, j, v));
+            }
+
+            vec += tmp * Bernstein(n, i, u);
+        }
+*/
+        /*
+        vec3 v1, v2;
+
+        for(unsigned int i = 0; i < n; i++) {
+            v1 += controlPoints[0][i] * Bernstein(n, i, u);
+        }
+
+        for(unsigned int i = 0; i < n; i++) {
+            v2 += controlPoints[i][0] * Bernstein(n, i, v);
+        }
+
+        vec = v1 * v2;
+         */
+
+
+        vec4 wVertex = vec4(vec.x, vec.y, vec.z, 1) * camera.Pinv() * camera.Vinv();
+        vec3 pos = vec; //vec3(wVertex.v[0], wVertex.v[1], 0);
+
+
+        vec3 a = vec3(vec / u);
+        vec3 b = vec3(vec / v);
+
+        vec3 cross = a.cross(b);
+
+        /*
         printf("pos: %f %f %f\n", pos.x, pos.y, pos.z);
-        return {pos, (vec / u).cross(vec / v), u, v};
+        printf("a__: %f %f %f\n", a.x, a.y, a.z);
+        printf("b__: %f %f %f\n", b.x, b.y, b.z);
+        printf("cro: %f %f %f\n", cross.x, cross.y, cross.z);
+*/
+        return {pos, cross, u, v};
     }
 
 public:
@@ -572,19 +625,32 @@ public:
         glGenBuffers(2, &vbo[0]);
         glBindBuffer(GL_ARRAY_BUFFER, vbo[0]);
 
+        /*
         unsigned int N = controlPoints.size();
-        unsigned int nVertices = N * N * 6;
+        nVertices = N * N;
 
         VertexData * vtx = new VertexData[nVertices], *pVtx = vtx;
 
         for (int i = 0; i < N; i++) {
             for (int j = 0; j < N; j++) {
-                *pVtx++ = p((float)i / N, (float)j / N);
-                *pVtx++ = p((float)(i + 1) / N, (float)j / N);
-                *pVtx++ = p((float)i / N, (float)(j + 1) / N);
-                *pVtx++ = p((float)(i + 1) / N, (float)j / N);
-                *pVtx++ = p((float)(i + 1) / N, (float)(j + 1) / N);
-                *pVtx++ = p((float)i / N, (float)(j + 1) / N);
+                *pVtx++ = {controlPoints[i][j], {1, 0, 0}, 1.0f, 1.0f};
+            }
+        }
+*/
+
+        unsigned int N = 6; //controlPoints.size();
+        nVertices = N * N * 6;
+
+        VertexData * vtx = new VertexData[nVertices], *pVtx = vtx;
+
+        for (int i = 0; i < N; i++) {
+            for (int j = 0; j < N; j++) {
+                *pVtx++ = p((float)i / N,        (float)j / N);
+                *pVtx++ = p((float)(i + 1) / N,  (float)j / N);
+                *pVtx++ = p((float)i / N,        (float)(j + 1) / N);
+                *pVtx++ = p((float)(i + 1) / N,  (float)j / N);
+                *pVtx++ = p((float)(i + 1) / N,  (float)(j + 1) / N);
+                *pVtx++ = p((float)i / N,        (float)(j + 1) / N);
             }
         }
 
@@ -602,54 +668,41 @@ public:
         float vertexColors[3 * nVertices];
 
         for(auto i = 0; i < nVertices; i++) {
-            vertexColors[i * 3] = 1;
-            vertexColors[i * 3 + 1] = 0;
-            vertexColors[i * 3 + 2] = 0;
+            vertexColors[i * 3] = 1.0f / (i + 1);
+            vertexColors[i * 3 + 1] = 0 + (1.0f / (i+1));
+            vertexColors[i * 3 + 2] = 1.0f - (1.0f / (i+1));
         }
 
         printf("%d %d\n", sizeof(vertexColors), nVertices * 3 * sizeof(float));
+        printf("%d %d %d %d %d\n", factorial(0), factorial(1), factorial(2), factorial(3), factorial(4));
 
         glBindBuffer(GL_ARRAY_BUFFER, vbo[1]); // make it active, it is an array
         glBufferData(GL_ARRAY_BUFFER, sizeof(vertexColors), vertexColors, GL_STATIC_DRAW);	// copy to the GPU
 
-        glEnableVertexAttribArray(4);
-        glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, 0, NULL);
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, NULL);
     }
 
     void Generate() {
         // 16 control points
-        for(int i = 0; i < 4; i++) {
+        auto n = 4;
+        float delta = 5.0f; //10.0f / n;
+
+        for(int i = 0; i < n; i++) {
 
             std::vector<vec3> tmp;
-            for(int j = 0; j < 4; j++) {
-                tmp.push_back(vec3(-0.0f + j * 1.0f, -0.0f + i * 1.0f, 0));
+            for(int j = 0; j < n; j++) {
+                tmp.push_back(vec3(-10.0f + i * delta, -10.0f + j * delta, 0));
             }
 
             controlPoints.push_back(tmp);
         }
 
-        /*
-        int i=0, j=0;
-        for(float u = 0.0f; u <= 1.0f; u += 0.25f, i++) {
-
-            for(float v = 0.0f; v <= 1.0f; v += 0.25, j++) {
-                printf("%f %f\n", u, v);
-
-                vec3 vec = p(u, v);
-
-                vec4 wVertex = vec4(vec.x, vec.y, 0, 1) * camera.Pinv() * camera.Vinv();
-
-                vertices[(5 * j) * i]     = wVertex.v[0];
-                vertices[(5 * j + 1) * j] = wVertex.v[1];
-                vertices[(5 * j + 2) * j] = 1.0f / u; // red
-                vertices[(5 * j + 3) * j] = 1.0f / v; // green
-                vertices[(5 * j + 4) * j] = 0; // blue
-                nVertices++;
+        for(auto i = 0; i < n; i++) {
+            for(auto j = 0; j < n; j++) {
+                printf("%d %d: %f %f %f\n", i, j, controlPoints[i][j].x, controlPoints[i][j].y, controlPoints[i][j].z);
             }
         }
-
-        glBufferData(GL_ARRAY_BUFFER, nVertices * 5 * sizeof(float), vertices, GL_DYNAMIC_DRAW);
-         */
     }
 
     void Draw() {
@@ -663,7 +716,7 @@ public:
             printf("uniform MVP cannot be set\n");
 
         glBindVertexArray(vao);
-        glDrawArrays(GL_LINE_STRIP, 0, nVertices); // GL_LINE_STRIP GL_TRIANGLES
+        glDrawArrays(GL_LINES, 0, nVertices); // GL_LINE_STRIP GL_TRIANGLES
     }
 };
 
@@ -751,6 +804,7 @@ public:
             glUniformMatrix4fv(location, 1, GL_TRUE, VPTransform);
         else
             printf("uniform MVP cannot be set\n");
+
 
         glBindVertexArray(vao);
         glDrawArrays(GL_LINE_STRIP, 0, nVertices);
@@ -849,14 +903,14 @@ void onInitialization() {
     glViewport(0, 0, windowWidth, windowHeight);
 
     // Create objects by setting up their vertex data on the GPU
-    //triangle.Create();
+    triangle.Create();
     //lineStrip.Create();
     //bc.Create();
 
    // lagrangeCurve.Create();
 
-    arrow.Generate();
-    arrow.show();
+    //arrow.Generate();
+    //arrow.show();
 
     bezierSurface.Generate();
     bezierSurface.Create();
@@ -932,14 +986,14 @@ void onDisplay() {
     glClearColor(0, 0, 0, 0);							// background color 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear the screen
 
-    //triangle.Draw();
+   // triangle.Draw();
     //lineStrip.Draw();
     //bc.Draw();
     //bc2.Draw();
     //printf("draw\n");
     //lagrangeCurve.Draw();
     bezierSurface.Draw();
-    arrow.Draw();
+   // arrow.Draw();
 
     glutSwapBuffers();									// exchange the two buffers
 }
