@@ -259,9 +259,9 @@ struct Camera {
     float wCx, wCy, wCz;	// center in world coordinates
     float wWx, wWy, wWz;	// width and height in world coordinates
 public:
-    Camera() {
-        Animate(0);
-    }
+    Camera() :
+            wCx(0), wCy(0), wCz(0),
+            wWx(1000), wWy(1000), wWz(150) {}
 
     mat4 V() { // view matrix: translates the center to the origin
         return mat4(1,    0, 0, 0,
@@ -292,13 +292,13 @@ public:
     }
 
     void Animate(float t) {
-        wCx = 0; // 10 * cosf(t);
+        /*wCx = 0; // 10 * cosf(t);
         wCy = 0;
         wCz = 0;
 
         wWx = 20;
         wWy = 20;
-        wWz = 20;
+        wWz = 20;*/
     }
 };
 
@@ -558,11 +558,7 @@ class BezierSurface {
     }
 
     double Bernstein(unsigned int n, unsigned int i, float u) {
-        double res = u == 0.0f || u == 1.0f ? 0.0f : binomial(n, i) * pow(u, i) * pow(1.0f - u, n - i);
-        if( u == 0.0f )
-            printf("res: %f u: %f (%lu * %lf * %f)\n", res, u, binomial(n, i), pow(u, i), pow(1.0f - u, n - i));
-
-        return res;
+        return binomial(n, i) * pow(u, i) * pow(1.0f - u, n - i);
     }
 
     double Bi(unsigned int i, double u) {
@@ -572,6 +568,21 @@ class BezierSurface {
             case 2: return 3 * u * u * (1.0f - u);
             case 3: return u * u * u;
         }
+    }
+
+    double Bn(unsigned n, unsigned i, double u) {
+        double a = pow(u, i);
+        double b = pow(1.0f - u, n - i);
+
+        double res = binomial(n, i);
+
+        if( a != 0.0f )
+            res *= a;
+
+        if( b != 0.0f )
+            res *= b;
+
+        return res;
     }
 
     VertexData p(float u, float v) {
@@ -585,8 +596,9 @@ class BezierSurface {
         for(unsigned int i = 0; i < n; i++) {
             for(unsigned int j = 0; j < n; j++) {
                 //printf("%d/%d %d/%d %f %f\n", i, n, j, m, u, v);
-                //vec += (controlPoints[i][j] * Bernstein(n, i, u) * Bernstein(m, j, v));
-                vec += (controlPoints[i][j] * Bi(i, u) * Bi(j, v));
+                vec += (controlPoints[i][j] * Bernstein(n-1, i, u) * Bernstein(m-1, j, v));
+                //vec += (controlPoints[i][j] * Bi(i, u) * Bi(j, v));
+                //vec += (controlPoints[i][j] * Bn(n-1, i, u) * Bn(m-1, j, v));
                 //sum += Bernstein(n, i, u) * Bernstein(m, j, v);
             }
         }
@@ -674,7 +686,7 @@ public:
         vec3 vertexColors[nVertices];
 
         for(auto i = 0; i < nVertices; i++) {
-            vertexColors[i] = getColor(vtx[i].position);
+            vertexColors[i] = vec3(1.0f, 0.0f, 0.0f); //getColor(vtx[i].position);
             printf("%f\n", vtx[i].position.z);
             /*
             vertexColors[i * 3]     = vtx[i].position.z;
@@ -696,17 +708,17 @@ public:
 
     void Generate() {
         // 16 control points
-        auto n = 4;
-        float delta = 7.5f; //10.0f / n;
+        auto n = 8;
+        float delta = 750.0f / 2.0f; //10.0f / n;
 
         for(int i = 0; i < n; i++) {
 
             std::vector<vec3> tmp;
             for(int j = 0; j < n; j++) {
                 tmp.push_back(vec3(
-                        -10.0f + i * delta,
-                        -10.0f + j * delta,
-                        ((rand() % 10)) / 10.f)
+                        -500.0f + i * delta,
+                        -500.0f + j * delta,
+                        0.0f) // (rand() % 148) - 74)
                 );
             }
 
@@ -731,7 +743,7 @@ public:
             printf("uniform MVP cannot be set\n");
 
         glBindVertexArray(vao);
-        glDrawArrays(GL_TRIANGLES, 0, nVertices); // GL_LINE_STRIP GL_TRIANGLES
+        glDrawArrays(GL_POINTS, 0, nVertices); // GL_LINE_STRIP GL_TRIANGLES
 
     }
 };
