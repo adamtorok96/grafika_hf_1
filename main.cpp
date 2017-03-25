@@ -59,6 +59,8 @@ const unsigned int windowWidth = 600, windowHeight = 600;
 // You are supposed to modify the code from here...
 
 // OpenGL major and minor versions
+#include <ctime>
+
 int majorVersion = 3, minorVersion = 3;
 
 void getErrorInfo(unsigned int handle) {
@@ -254,8 +256,8 @@ struct vec4 {
 
 // 2D camera
 struct Camera {
-    float wCx, wCy;	// center in world coordinates
-    float wWx, wWy;	// width and height in world coordinates
+    float wCx, wCy, wCz;	// center in world coordinates
+    float wWx, wWy, wWz;	// width and height in world coordinates
 public:
     Camera() {
         Animate(0);
@@ -265,13 +267,13 @@ public:
         return mat4(1,    0, 0, 0,
                     0,    1, 0, 0,
                     0,    0, 1, 0,
-                    -wCx, -wCy, 0, 1);
+                    -wCx, -wCy, -wCz, 1);
     }
 
     mat4 P() { // projection matrix: scales it to be a square of edge length 2
         return mat4(2/wWx,    0, 0, 0,
                     0,    2/wWy, 0, 0,
-                    0,        0, 1, 0,
+                    0,        0, 2/wWz, 0,
                     0,        0, 0, 1);
     }
 
@@ -279,21 +281,24 @@ public:
         return mat4(1,     0, 0, 0,
                     0,     1, 0, 0,
                     0,     0, 1, 0,
-                    wCx, wCy, 0, 1);
+                    wCx, wCy, wCz, 1);
     }
 
     mat4 Pinv() { // inverse projection matrix
         return mat4(wWx/2, 0,    0, 0,
                     0, wWy/2, 0, 0,
-                    0,  0,    1, 0,
+                    0,  0,    wWz/2, 0,
                     0,  0,    0, 1);
     }
 
     void Animate(float t) {
         wCx = 0; // 10 * cosf(t);
         wCy = 0;
+        wCz = 0;
+
         wWx = 20;
         wWy = 20;
+        wWz = 20;
     }
 };
 
@@ -565,7 +570,7 @@ class BezierSurface {
             case 0: return pow(1.0f - u, 3);
             case 1: return 3 * u * pow(1.0f - u, 2);
             case 2: return 3 * u * u * (1.0f - u);
-            case 3: return u * u *u;
+            case 3: return u * u * u;
         }
     }
 
@@ -582,38 +587,11 @@ class BezierSurface {
                 //printf("%d/%d %d/%d %f %f\n", i, n, j, m, u, v);
                 //vec += (controlPoints[i][j] * Bernstein(n, i, u) * Bernstein(m, j, v));
                 vec += (controlPoints[i][j] * Bi(i, u) * Bi(j, v));
-                sum += Bernstein(n, i, u) * Bernstein(m, j, v);
+                //sum += Bernstein(n, i, u) * Bernstein(m, j, v);
             }
         }
 
         //printf("sum: %f (%f, %f)\n", sum, u, v);
-
-/*
-        for(unsigned int i = 0; i < n; i++) {
-            vec3 tmp;
-
-            for(unsigned int j = 0; j < m; j++) {
-                //printf("%d/%d %d/%d %f %f\n", i, n, j, m, u, v);
-                tmp += (controlPoints[i][j] * Bernstein(m, j, v));
-            }
-
-            vec += tmp * Bernstein(n, i, u);
-        }*/
-
-        /*
-        vec3 v1, v2;
-
-        for(unsigned int i = 0; i < n; i++) {
-            v1 += controlPoints[0][i] * Bernstein(n, i, u);
-        }
-
-        for(unsigned int i = 0; i < n; i++) {
-            v2 += controlPoints[i][0] * Bernstein(n, i, v);
-        }
-
-        vec = v1 * v2;
-         */
-
 
         vec4 wVertex = vec4(vec.x, vec.y, vec.z, 1) * camera.Pinv() * camera.Vinv();
         vec3 pos = vec; //vec3(wVertex.v[0], wVertex.v[1], 0);
@@ -631,6 +609,15 @@ class BezierSurface {
         printf("cro: %f %f %f\n", cross.x, cross.y, cross.z);
 */
         return {pos, cross, u, v};
+    }
+
+    vec3 getColor(vec3 const & pos) {
+        if( pos.z < 0.33f)
+            return vec3(0.0f, 1.0f, 0.0f);
+        else if( pos.z < 0.66f )
+            return vec3(200.0f / 255.0f, 100.0f / 255.0f, 0.0f);
+        else
+            return vec3(50.0f / 255.0f, 25.0f / 255.0f, 0.0f);
     }
 
 public:
@@ -656,7 +643,7 @@ public:
         }
 #else
 
-        unsigned int N = 20; //controlPoints.size();
+        unsigned int N = 40; //controlPoints.size();
         unsigned int M = N;
         nVertices = N * M * 6;
 
@@ -684,16 +671,21 @@ public:
         glEnableVertexAttribArray(2);  // AttribArray 2 = UV
         glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(VertexData), (void*)offsetof(VertexData, u));
 
-        float vertexColors[3 * nVertices];
+        vec3 vertexColors[nVertices];
 
         for(auto i = 0; i < nVertices; i++) {
-            vertexColors[i * 3]     = i % 3 == 0 ? 1.0f : 0.0f; //1.0f / (i + 1);
-            vertexColors[i * 3 + 1] = i % 3 == 1 ? 1.0f : 0.0f; //0 + (1.0f / (i+1));
-            vertexColors[i * 3 + 2] = i % 3 == 2 ? 1.0f : 0.0f; //1.0f - (1.0f / (i+1));
+            vertexColors[i] = getColor(vtx[i].position);
+            printf("%f\n", vtx[i].position.z);
+            /*
+            vertexColors[i * 3]     = vtx[i].position.z;
+            vertexColors[i * 3 + 1] = 0.0f;
+            vertexColors[i * 3 + 2] = 0.0f;
+            printf("%f\n", vtx[i].position.z);
+             */
         }
 
-        printf("%d %d\n", sizeof(vertexColors), nVertices * 3 * sizeof(float));
-        printf("%lf %lf %lf %lf %lf\n", factorial(0), factorial(1), factorial(2), factorial(3), factorial(4));
+        //printf("%d %d\n", sizeof(vertexColors), nVertices * 3 * sizeof(float));
+        //printf("%lf %lf %lf %lf %lf\n", factorial(0), factorial(1), factorial(2), factorial(3), factorial(4));
 
         glBindBuffer(GL_ARRAY_BUFFER, vbo[1]); // make it active, it is an array
         glBufferData(GL_ARRAY_BUFFER, sizeof(vertexColors), vertexColors, GL_STATIC_DRAW);	// copy to the GPU
@@ -714,7 +706,7 @@ public:
                 tmp.push_back(vec3(
                         -10.0f + i * delta,
                         -10.0f + j * delta,
-                        0.05f)
+                        ((rand() % 10)) / 10.f)
                 );
             }
 
@@ -926,6 +918,8 @@ Arrow arrow;
 void onInitialization() {
     glViewport(0, 0, windowWidth, windowHeight);
 
+    srand ((unsigned int) time(NULL));
+
     // Create objects by setting up their vertex data on the GPU
     triangle.Create();
     //lineStrip.Create();
@@ -998,6 +992,8 @@ void onInitialization() {
     checkLinking(shaderProgram);
     // make this program run
     glUseProgram(shaderProgram);
+
+    glEnable(GL_DEPTH_TEST);
 }
 
 void onExit() {
