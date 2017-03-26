@@ -455,10 +455,8 @@ class BezierSurface {
     GLuint vbo[2];
 
     unsigned int nVertices;
-    float vertices[16 * 20 * 5 * sizeof(float)];
 
     std::vector<std::vector<vec3>> controlPoints;
-    std::vector<std::vector<vec3>> points;
 
     struct VertexData {
         vec3 position, normal;
@@ -495,12 +493,7 @@ class BezierSurface {
             }
         }
 
-        if( vec.z > 70 )
-            printf("%f\n", vec.z);
-
         vec4 wVertex = vec4(vec, 1) * camera.Pinv() * camera.Vinv();
-
-
 
         return {{wVertex.v[0], wVertex.v[1], wVertex.v[2]}, vec3(vec / u).cross(vec / v), u, v};
     }
@@ -525,8 +518,8 @@ class BezierSurface {
                 tmp.push_back(vec3(
                         -1.0f + i * delta,
                         -1.0f + j * delta,
-                        (rand() % 150) - 75)
-                );
+                        0.0f //(rand() % 150) - 75)
+                ));
             }
 
             controlPoints.push_back(tmp);
@@ -604,12 +597,15 @@ public:
 
         glEnableVertexAttribArray(1);
         glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, NULL);
+
+        delete[] vtx;
+        delete[] vertexColors;
     }
 
     void Draw() {
         mat4 scale(
                 1, 0, 0, 0,
-                0, 1, 0, 0,
+                0, 0.5, 0, 0,
                 0, 0, 1, 0,
                 0, 0, 0, 1
         );
@@ -694,7 +690,7 @@ public:
             for (float t = 0.0f; t < (float) (controlPoints.size() - 1) - 0.05f; t += 0.05f) {
                 vec3 vec = r(t);
 
-                vec4 wVertex = vec4(vec.x, vec.y, 74, 1) * camera.Pinv() * camera.Vinv();
+                vec4 wVertex = vec4(vec.x, vec.y, 149, 1) * camera.Pinv() * camera.Vinv();
 
                 *pVertices++ = wVertex.v[0];
                 *pVertices++ = wVertex.v[1];
@@ -856,17 +852,12 @@ void onInitialization() {
 
     srand ((unsigned int) time(NULL));
 
-    // Create objects by setting up their vertex data on the GPU
-    //triangle.Create();
-    //lineStrip.Create();
-    //bc.Create();
+    lagrangeCurve.Create();
+    bezierSurface.Create();
 
     arrow.Create();
     arrow.show();
 
-    bezierSurface.Create();
-
-    lagrangeCurve.Create();
 
 
     // Create vertex shader from string
@@ -922,12 +913,6 @@ void onDisplay() {
     glClearColor(0, 0, 0, 0);							// background color 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear the screen
 
-   // triangle.Draw();
-    //lineStrip.Draw();
-    //bc.Draw();
-    //bc2.Draw();
-    //printf("draw\n");
-
     bezierSurface.Draw();
     lagrangeCurve.Draw();
     arrow.Draw();
@@ -969,8 +954,9 @@ void onMouseMotion(int pX, int pY) {
 void onIdle() {
     long time = glutGet(GLUT_ELAPSED_TIME); // elapsed time since the start of the program
     float sec = time / 1000.0f;				// convert msec to sec
+
     camera.Animate(sec);					// animate the camera
-    //triangle.Animate(sec);					// animate the triangle object
+
     glutPostRedisplay();					// redraw the scene
 }
 
